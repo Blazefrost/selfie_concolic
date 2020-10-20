@@ -103,6 +103,9 @@ sat: babysat selfie selfie.h
 monster: tools/monster.c selfie.h
 	$(CC) $(CFLAGS) --include selfie.h $< -o $@
 
+concolic: tools/concolic.c selfie.h
+	$(CC) $(CFLAGS) --include selfie.h $< -o $@
+
 # Run monster, the symbolic execution engine, natively and as RISC-U executable
 mon: monster selfie.h selfie
 	./monster
