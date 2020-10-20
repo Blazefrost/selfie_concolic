@@ -1,5 +1,46 @@
 /*#include "../selfie.h"*/
 
+// -----------------------------------------------------------------
+// --------------------- INSTRUCTION TRACE -------------------------
+// -----------------------------------------------------------------
+
+// ------------------------ GLOBAL CONSTANTS -----------------------
+
+uint64_t SYMBOLIC_POS_LEFT  = 0;
+uint64_t SYMBOLIC_POS_RIGHT = 1;
+
+// instr_trace struct:
+// +---+---------------+
+// | 0 | instruction   | The instruction ID that has been executed
+// | 1 | symbolic_id   | The ID of the symbolic operand
+// | 2 | operand_snap  | Snapshot of the non-symbolic operand's value
+// | 3 | symbolic_pos  | The position of the symbolic operand
+// | 4 | next          | Pointer to the next entry of the linked list
+// +---+---------------+
+
+uint64_t* allocate_instr_trace() {
+  return smalloc(1 * SIZEOFUINT64STAR + 4 * SIZEOFUINT64);
+}
+
+uint64_t  get_instruction(uint64_t* trace)       { return             *trace; }
+uint64_t  get_symbolic_id(uint64_t* trace)       { return             *(trace + 1); }
+uint64_t  get_operand_snapshot(uint64_t* trace)  { return             *(trace + 2); }
+uint64_t  get_symbolic_position(uint64_t* trace) { return             *(trace + 3); }
+uint64_t* get_next_instr_trace(uint64_t* trace)  { return (uint64_t*) *(trace + 4); }
+
+void set_instruction(uint64_t* trace, uint64_t id)         { *trace        = id; }
+void set_symbolic_id(uint64_t* trace, uint64_t id)         { *(trace + 1)  = id; }
+void set_operand_snapshot(uint64_t* trace, uint64_t value) { *(trace + 2)  = value; }
+void set_symbolic_position(uint64_t* trace, uint64_t pos)  { *(trace + 3)  = pos; }
+void set_next_instr_trace(uint64_t* trace, uint64_t* next) { *(trace + 4)  = (uint64_t) next; }
+
+
+
+
+// -----------------------------------------------------------------
+// ---------------------- CONCOLIC ENGINE --------------------------
+// -----------------------------------------------------------------
+
 void run_until_exception_concolic();
 void execute_concolic();
 uint64_t *concolic_switch(uint64_t *to_context, uint64_t timeout);
