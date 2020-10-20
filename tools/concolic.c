@@ -9,6 +9,11 @@
 uint64_t SYMBOLIC_POS_LEFT  = 0;
 uint64_t SYMBOLIC_POS_RIGHT = 1;
 
+// ------------------------ GLOBAL VARIABLES -----------------------
+
+// TODO: This probably belongs into a context extension
+uint64_t* trace = (uint64_t*) 0;
+
 // instr_trace struct:
 // +---+---------------+
 // | 0 | instruction   | The instruction ID that has been executed
@@ -34,8 +39,18 @@ void set_operand_snapshot(uint64_t* trace, uint64_t value) { *(trace + 2)  = val
 void set_symbolic_position(uint64_t* trace, uint64_t pos)  { *(trace + 3)  = pos; }
 void set_next_instr_trace(uint64_t* trace, uint64_t* next) { *(trace + 4)  = (uint64_t) next; }
 
+void append_instr_trace(uint64_t instruction, uint64_t symbolic_id, uint64_t operand_snapshot, uint64_t symbolic_pos) {
+  uint64_t* current_trace;
+  current_trace = allocate_instr_trace();
 
+  set_instruction(current_trace, instruction);
+  set_symbolic_id(current_trace, symbolic_id);
+  set_operand_snapshot(current_trace, operand_snapshot);
+  set_symbolic_position(current_trace, symbolic_pos);
+  set_next_instr_trace(current_trace, trace);
 
+  trace = current_trace;
+}
 
 // -----------------------------------------------------------------
 // ---------------------- CONCOLIC ENGINE --------------------------
@@ -100,19 +115,27 @@ uint64_t get_mem_var_type(uint64_t addr) {
 void track_rtype_instruction() {
   uint64_t rs1_type;
   uint64_t rs2_type;
+  uint64_t rs1_value;
+  uint64_t rs2_value;
 
   rs1_type = get_reg_var_type(rs1);
   rs2_type = get_reg_var_type(rs2);
 
+  rs1_value = *(registers + rs1);
+  rs2_value = *(registers + rs2);
+
   if (rs1_type == CONCRETE_T) {
     if (rs2_type == CONCRETE_T)
       set_reg_var_type(rd, CONCRETE_T);
-    else
-      set_reg_var_type(rd, rs2_type);
-  } else {
-    if (rs2_type == CONCRETE_T)
-      set_reg_var_type(rd, rs1_type);
     else {
+      set_reg_var_type(rd, rs2_type);
+      append_instr_trace(is, rs2_type, rs1_value, SYMBOLIC_POS_RIGHT);
+    }
+  } else {
+    if (rs2_type == CONCRETE_T) {
+      set_reg_var_type(rd, rs1_type);
+      append_instr_trace(is, rs1_type, rs2_value, SYMBOLIC_POS_LEFT);
+    } else {
       printf1("%s: handle two symbolic types in rtype instruction\n",
               selfie_name);
       exit(1);
@@ -129,8 +152,10 @@ void track_itype_instruction() {
 
   if (rs1_type == CONCRETE_T)
     set_reg_var_type(rd, CONCRETE_T);
-  else
+  else {
     set_reg_var_type(rd, rs1_type);
+    append_instr_trace(is, rs1_type, imm, SYMBOLIC_POS_LEFT);
+  }
 }
 
 void track_ld() {
@@ -147,6 +172,33 @@ void track_sd() {
   vaddr = *(registers + rs1) + imm;
 
   set_mem_var_type(vaddr, get_reg_var_type(rs2));
+}
+
+void track_beq() {
+  uint64_t rs1_type;
+  uint64_t rs2_type;
+  uint64_t rs1_value;
+  uint64_t rs2_value;
+
+  rs1_type = get_reg_var_type(rs1);
+  rs2_type = get_reg_var_type(rs2);
+
+  rs1_value = *(registers + rs1);
+  rs2_value = *(registers + rs2);
+
+  // We don't need to backtrace concrete-concrete branches
+  if (rs1_type == CONCRETE_T) {
+    if (rs2_type != CONCRETE_T)
+      append_instr_trace(is, rs2_type, rs1_value, SYMBOLIC_POS_RIGHT);
+  } else {
+    if (rs2_type == CONCRETE_T)
+      append_instr_trace(is, rs1_type, rs2_value, SYMBOLIC_POS_LEFT);
+    else {
+      printf1("%s: handle two symbolic types in rtype instruction\n",
+              selfie_name);
+      exit(1);
+    }
+  }
 }
 
 void execute_concolic() {
@@ -179,6 +231,8 @@ void execute_concolic() {
     do_sltu();
   } else if (is == BEQ) {
     // does not change types in memory
+    // but must be recorded for backtracing
+    track_beq();
     do_beq();
   } else if (is == JAL) {
     track_concrete_rd();
