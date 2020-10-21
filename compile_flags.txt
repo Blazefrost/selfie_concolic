@@ -1,1 +1,2 @@
 -Duint64_t=unsigned long long
+--include ../selfie.h

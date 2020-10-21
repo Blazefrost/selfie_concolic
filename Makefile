@@ -106,6 +106,9 @@ monster: tools/monster.c selfie.h
 concolic: tools/concolic.c selfie.h
 	$(CC) $(CFLAGS) --include selfie.h $< -o $@
 
+con: concolic selfie.h selfie
+	./concolic -c examples/symbolic/concolic_example.c - 1
+
 # Run monster, the symbolic execution engine, natively and as RISC-U executable
 mon: monster selfie.h selfie
 	./monster
