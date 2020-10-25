@@ -7,6 +7,9 @@
 uint64_t SYMBOLIC_POS_LEFT  = 0;
 uint64_t SYMBOLIC_POS_RIGHT = 1;
 
+uint64_t EXPRESSION_TYPE_POINT = 0;
+uint64_t EXPRESSION_TYPE_RANGE = 1;
+
 uint64_t* CONCRETE_T = (uint64_t*)0;
 
 uint64_t MAX_SYMBOLIC_VARIABLES = 100;
@@ -124,6 +127,141 @@ uint64_t* append_instr_trace(uint64_t instruction, uint64_t* symbolic_type,
   *(trace + get_type_id(type)) = (uint64_t)current_trace;
 
   return type;
+}
+
+uint64_t get_trace_expression_type(uint64_t* trace) {
+  while (trace != 0) {
+    if (get_instruction(trace) == SLTU)
+      return EXPRESSION_TYPE_RANGE;
+
+    trace = get_prev_instruction(trace);
+  }
+  return EXPRESSION_TYPE_POINT;
+}
+
+uint64_t generate_test_case(uint64_t* trace, uint64_t positive_case) {
+  uint64_t instruction;
+  uint64_t negate;
+  uint64_t sltu_pos;
+  uint64_t sltu_value;
+
+  // The first level must be a branch
+  if (get_instruction(trace) != BEQ) {
+    printf1("%s: instruction trace must begin with a branch instruction\n", selfie_name);
+    exit(EXITCODE_BADARGUMENTS);
+  }
+
+  if (get_trace_expression_type(trace) == EXPRESSION_TYPE_RANGE) {
+    // Look for the SLTU instruction
+    // assert: all trace entries before SLTU are boolean operations (just values 0 and 1 are valid states)
+    // TODO: Thoroughly handle boolean operations instead of just 1 - (...)
+    negate = 0;
+    while (get_instruction(trace) != SLTU) {
+      // If we encounter a 1 - (...) trace entry before the SLTU instruction,
+      // the range is negated.
+      if (get_instruction(trace) == SUB) {
+        if (get_operand_snapshot(trace) == 1) {
+          if (get_symbolic_position(trace) == SYMBOLIC_POS_RIGHT)
+            negate = 1;
+          else
+            negate = 0;
+        } else
+          negate = 0;
+      } else
+        negate = 0;
+
+      trace = get_prev_instruction(trace);
+    }
+
+    sltu_value = get_operand_snapshot(trace);
+    sltu_pos = get_symbolic_position(trace);
+
+    // Perform inverse operation
+    // TODO: Export to separate function
+    trace = get_prev_instruction(trace);
+    while (trace != 0) {
+      instruction = get_instruction(trace);
+
+      // TODO: MUL and DIVU need more handling
+      if (instruction == ADD) {
+        sltu_value = sltu_value - get_operand_snapshot(trace);
+      } else if (instruction == ADDI) {
+        sltu_value = sltu_value - get_operand_snapshot(trace);
+      } else if (instruction == MUL) {
+        sltu_value = sltu_value / get_operand_snapshot(trace);
+      } else if (instruction == SUB) {
+        if (get_symbolic_position(trace) == SYMBOLIC_POS_RIGHT) {
+          // operand - x < sltu_value <-*(-1)->  x - operand > -sltu_value <-> x > operand - sltu_value
+          if (sltu_pos == SYMBOLIC_POS_RIGHT)
+            sltu_pos = SYMBOLIC_POS_LEFT;
+          else
+            sltu_pos = SYMBOLIC_POS_RIGHT;
+
+          sltu_value = get_operand_snapshot(trace) - sltu_value;
+        } else {
+          // x - operand
+          sltu_value = sltu_value + get_operand_snapshot(trace);
+        }
+      } else if (instruction == DIVU) {
+        if (get_symbolic_position(trace) == SYMBOLIC_POS_RIGHT) {
+          // operand / x < sltu_value <-> x / operand > 1 / sltu_value <-> x > operand / sltu_value
+          if (sltu_pos == SYMBOLIC_POS_RIGHT)
+            sltu_pos = SYMBOLIC_POS_LEFT;
+          else
+            sltu_pos = SYMBOLIC_POS_RIGHT;
+
+          sltu_value = get_operand_snapshot(trace) / sltu_value;
+        } else {
+          // x / operand
+          sltu_value = sltu_value * get_operand_snapshot(trace);
+        }
+      }
+
+      trace = get_prev_instruction(trace);
+    }
+
+    if (positive_case) {
+      if (negate) {
+        if (sltu_pos == SYMBOLIC_POS_LEFT) {
+          // x >= sltu_value
+          return sltu_value;
+        } else {
+          // x <= sltu_value
+          return sltu_value;
+        }
+      } else {
+        if (sltu_pos == SYMBOLIC_POS_LEFT) {
+          // x < sltu_value
+          return sltu_value - 1;
+        } else {
+          // x > sltu_value
+          return sltu_value + 1;
+        }
+      }
+    } else {
+      if (negate) {
+        if (sltu_pos == SYMBOLIC_POS_LEFT) {
+          // x >= sltu_value
+          return sltu_value - 1;
+        } else {
+          // x <= sltu_value
+          return sltu_value + 1;
+        }
+      } else {
+        if (sltu_pos == SYMBOLIC_POS_LEFT) {
+          // x < sltu_value
+          return sltu_value;
+        } else {
+          // x > sltu_value
+          return sltu_value;
+        }
+      }
+    }
+  } else {
+    // TODO: Seldom - requires if() without comparison expression
+    printf1("%s: warning: point-type expression not implemented yet", selfie_name);
+    return 0;
+  }
 }
 
 // -----------------------------------------------------------------
@@ -579,6 +717,13 @@ void print_beq_traces(uint64_t* traces) {
   print_unsigned_integer(symbolic_id);
   print(": ");
   print_trace(trace);
+
+  print(" (test case ");
+  print_unsigned_integer(generate_test_case(trace, 1));
+  print(", negative ");
+  print_unsigned_integer(generate_test_case(trace, 0));
+  print(")");
+
   println();
 }
 
