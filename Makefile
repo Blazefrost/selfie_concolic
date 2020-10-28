@@ -1,5 +1,5 @@
 # Compiler flags
-CFLAGS := -Wall -Wextra -O3 -m64 -D'uint64_t=unsigned long long'
+CFLAGS := -Wall -Wextra -O0 -g3 -m64 -D'uint64_t=unsigned long long'
 
 # Bootstrap selfie.c into selfie executable
 selfie: selfie.c
@@ -103,11 +103,11 @@ sat: babysat selfie selfie.h
 monster: tools/monster.c selfie.h
 	$(CC) $(CFLAGS) --include selfie.h $< -o $@
 
-concolic: tools/concolic.c selfie.h
+conqueror: tools/conqueror.c selfie.h
 	$(CC) $(CFLAGS) --include selfie.h $< -o $@
 
-con: concolic selfie.h selfie
-	./concolic -c examples/symbolic/concolic_example.c - 1
+con: conqueror selfie.h selfie
+	./conqueror -c examples/symbolic/concolic_example.c - 1
 
 # Run monster, the symbolic execution engine, natively and as RISC-U executable
 mon: monster selfie.h selfie
